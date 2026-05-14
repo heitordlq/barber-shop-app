@@ -1,0 +1,243 @@
+// ============================================================
+// TENANT SCHEMA — dados operacionais de cada barbearia
+// Each tenant gets its own PostgreSQL schema named after its slug.
+// Tables are created via tenant-ddl.sql when a new tenant registers.
+// Cross-schema references (userId, tenantId) are plain strings — no FK.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/tenant-client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentType {
+  ONLINE
+  MANUAL
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  COMMISSION
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMATION
+  BOOKING_REMINDER
+  BOOKING_CANCELLATION
+  PAYMENT_RECEIVED
+  SYSTEM
+}
+
+enum LoyaltyPlanInterval {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+// ============================================================
+// MODELS
+// (tenantId / userId / barberId are plain strings — no FK to backoffice)
+// ============================================================
+
+model Service {
+  id               String            @id @default(cuid())
+  tenantId         String            // references backoffice.tenants.id (no FK)
+  name             String
+  description      String?
+  price            Decimal           @db.Decimal(10, 2)
+  duration         Int
+  active           Boolean           @default(true)
+  appointments     Appointment[]
+  loyaltyPlanItems LoyaltyPlanItem[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@map("services")
+}
+
+model Appointment {
+  id              String            @id @default(cuid())
+  tenantId        String            // references backoffice.tenants.id (no FK)
+  tenantSlug      String            // denormalized slug — needed for webhook routing
+  serviceId       String
+  service         Service           @relation(fields: [serviceId], references: [id])
+  /** Serviços extras no mesmo atendimento (só duração/preço agregados; principal continua em serviceId). */
+  additionalServiceIds String[]   @default([])
+  userId          String?           // references backoffice.users.id (no FK)
+  barberId        String?           // references backoffice.users.id (no FK)
+  barberName      String?           // denormalized for display without cross-schema join
+  clientName      String
+  clientEmail     String?
+  clientPhone     String?
+  startTime       DateTime
+  endTime         DateTime
+  status          AppointmentStatus @default(PENDING)
+  type            AppointmentType   @default(ONLINE)
+  paymentIntentId String?
+  platformFee     Decimal?          @db.Decimal(10, 2)
+  netAmount       Decimal?          @db.Decimal(10, 2)
+  notes           String?
+  /** Canal/origem livre (ex.: App, Balcão, WhatsApp, Instagram) — uso interno da equipe. */
+  bookingSource   String?
+  /** NONE | LEAVE | BLOCK — folga ou bloqueio na grade. */
+  holdKind        String            @default("NONE")
+  holdReason      String?
+  /** Comanda: [{ serviceId, barberId? }, ...] em sequência. */
+  comandaLines    Json?
+  loyaltyUsage    LoyaltyUsage?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([tenantId, startTime])
+  @@index([tenantId, status])
+  @@map("appointments")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  stock       Int      @default(0)
+  active      Boolean  @default(true)
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("products")
+}
+
+model Transaction {
+  id            String          @id @default(cuid())
+  tenantId      String
+  type          TransactionType
+  amount        Decimal         @db.Decimal(10, 2)
+  description   String
+  date          DateTime        @default(now())
+  barberId      String?         // references backoffice.users.id (no FK)
+  appointmentId String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([tenantId, date])
+  @@map("transactions")
+}
+
+model LoyaltyProgram {
+  id             String        @id @default(cuid())
+  tenantId       String
+  name           String
+  pointsRequired Int           @default(10)
+  reward         String
+  active         Boolean       @default(true)
+  cards          LoyaltyCard[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("loyalty_programs")
+}
+
+model LoyaltyCard {
+  id               String         @id @default(cuid())
+  loyaltyProgramId String
+  loyaltyProgram   LoyaltyProgram @relation(fields: [loyaltyProgramId], references: [id], onDelete: Cascade)
+  userId           String         // references backoffice.users.id (no FK)
+  points           Int            @default(0)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([userId, loyaltyProgramId])
+  @@map("loyalty_cards")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           // references backoffice.users.id (no FK)
+  title     String
+  content   String
+  type      NotificationType @default(SYSTEM)
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+model LoyaltyPlan {
+  id            String                @id @default(cuid())
+  tenantId      String
+  name          String
+  description   String?
+  price         Decimal               @db.Decimal(10, 2)
+  interval      LoyaltyPlanInterval   @default(MONTHLY)
+  active        Boolean               @default(true)
+  items         LoyaltyPlanItem[]
+  subscriptions LoyaltySubscription[]
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@map("loyalty_plans")
+}
+
+model LoyaltyPlanItem {
+  id          String      @id @default(cuid())
+  planId      String
+  plan        LoyaltyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  serviceId   String
+  service     Service     @relation(fields: [serviceId], references: [id])
+  quantity    Int
+  allowedDays Int[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("loyalty_plan_items")
+}
+
+model LoyaltySubscription {
+  id        String      @id @default(cuid())
+  planId    String
+  plan      LoyaltyPlan @relation(fields: [planId], references: [id])
+  userId    String      // references backoffice.users.id (no FK)
+  /** Quando a barbearia usa caixa separado: assinatura “pertence” ao barbeiro (balcão / carteira). */
+  barberId  String?
+  status    String      @default("ACTIVE")
+  startDate DateTime    @default(now())
+  endDate   DateTime?
+  usages    LoyaltyUsage[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([barberId])
+  @@map("loyalty_subscriptions")
+}
+
+model LoyaltyUsage {
+  id             String              @id @default(cuid())
+  subscriptionId String
+  subscription   LoyaltySubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  appointmentId  String              @unique
+  appointment    Appointment         @relation(fields: [appointmentId], references: [id])
+  usedAt         DateTime            @default(now())
+
+  @@map("loyalty_usages")
+}

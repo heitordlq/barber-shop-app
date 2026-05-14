@@ -1,0 +1,165 @@
+services:
+  # ============================================================
+  # INFRAESTRUTURA
+  # ============================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: barbearia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: barbearia
+      POSTGRES_PASSWORD: barbearia123
+      POSTGRES_DB: barbearia
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - barbearia-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U barbearia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: barbearia-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - barbearia-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: barbearia-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # Console Web
+    volumes:
+      - minio_data:/data
+    networks:
+      - barbearia-network
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # ============================================================
+  # BACKEND
+  # ============================================================
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    container_name: barbearia-backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://barbearia:barbearia123@postgres:5432/barbearia
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-change-in-production}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}
+      RESEND_API_KEY: ${RESEND_API_KEY:-re_placeholder}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@barbearia.app}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: barbearia-assets
+      BACKOFFICE_URL: http://localhost:3002
+      BARBERSHOP_URL: http://localhost:3003
+      CLIENT_URL: http://localhost:3004
+      PORT: 3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - barbearia-network
+
+  # ============================================================
+  # FRONTENDS
+  # ============================================================
+
+  backoffice:
+    build:
+      context: .
+      dockerfile: docker/backoffice.Dockerfile
+    container_name: barbearia-backoffice
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - barbearia-network
+
+  barbershop:
+    build:
+      context: .
+      dockerfile: docker/barbershop.Dockerfile
+    container_name: barbearia-barbershop
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - barbearia-network
+
+  client:
+    build:
+      context: .
+      dockerfile: docker/client.Dockerfile
+    container_name: barbearia-client
+    restart: unless-stopped
+    ports:
+      - "3004:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      NODE_ENV: production
+    depends_on:
+      - backend
+    networks:
+      - barbearia-network
+
+# ============================================================
+# VOLUMES & NETWORKS
+# ============================================================
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  barbearia-network:
+    driver: bridge

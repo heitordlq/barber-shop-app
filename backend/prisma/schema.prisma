@@ -1,0 +1,156 @@
+// ============================================================
+// BACKOFFICE SCHEMA — dados globais da plataforma
+// Tables live in the "backoffice" PostgreSQL schema
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  ADMIN
+  OWNER
+  BARBER
+  CLIENT
+}
+
+enum TenantStatus {
+  ACTIVE
+  INACTIVE
+  DELINQUENT
+}
+
+enum PlanLimitsScope {
+  TENANT
+  PER_BARBER
+}
+
+enum BillingModel {
+  LEGACY
+  OWNER_CUT_PERCENT
+}
+
+// ============================================================
+// MODELS
+// ============================================================
+
+model Plan {
+  id                      String   @id @default(cuid())
+  name                    String
+  description             String?
+  monthlyPrice            Decimal  @db.Decimal(10, 2)
+  pixFeePercent           Decimal  @db.Decimal(5, 2)  @default(0)
+  creditCardFeePercent    Decimal  @db.Decimal(5, 2)  @default(0)
+  platformFeeFixed        Decimal  @db.Decimal(10, 2) @default(0)
+  maxServices             Int?
+  maxTeamMembers          Int?
+  hasLoyaltyPlans         Boolean  @default(true)
+  hasAiAgent              Boolean  @default(false)
+  hasChatBot              Boolean  @default(false)
+  canDisableOnlinePayment Boolean  @default(false)
+  canCustomizeAppearance  Boolean  @default(false)
+  hasMarketingSystem      Boolean  @default(false)
+  active                  Boolean  @default(true)
+  limitsScope             PlanLimitsScope @default(TENANT)
+  maxServicesPerBarber    Int?
+  stripePriceId           String?
+  tenants                 Tenant[]
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("plans")
+}
+
+model Tenant {
+  id                       String           @id @default(cuid())
+  slug                     String           @unique
+  name                     String
+  description              String?
+  address                  String?
+  phone                    String?
+  logoUrl                  String?
+  photos                   String[]         @default([])
+  status                   TenantStatus     @default(ACTIVE)
+  stripeAccountId          String?
+  stripeOnboardingComplete Boolean          @default(false)
+  subscriptionId           String?
+  stripeCustomerId         String?
+  workingHours             Json             @default("{}")
+  serviceCategories        String[]         @default([])
+  planId                   String?
+  plan                     Plan?            @relation(fields: [planId], references: [id])
+  whatsapp                 String?
+  configMsgAgendamento     Boolean          @default(true)
+  temporarilyClosed        Boolean          @default(false)
+  tipoComissao             String           @default("PERCENTAGE")
+  billingModel             BillingModel     @default(LEGACY)
+  defaultOwnerCutPercent   Decimal?         @db.Decimal(5, 2)
+  separateCashRegisterEnabled Boolean       @default(false)
+  /** Reserva após cada atendimento (min). 0 = sem intervalo; padrão 5. Afeta slots públicos e conflitos na agenda. */
+  appointmentGapMinutes    Int             @default(5)
+  users                    User[]
+  adminLogs                TenantAdminLog[]
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+
+  @@map("tenants")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  tenantId     String?
+  tenant       Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  tenantSlug   String?   // cached from tenant.slug for JWT without extra query
+  name         String
+  email        String    @unique
+  password     String
+  role         UserRole  @default(CLIENT)
+  stripeCustomerId String?
+  refreshToken String?
+  cpf          String?
+  phone        String?
+  workingHours Json      @default("{}")
+  blocked      Boolean   @default(false)
+  ownerCutPercentOverride Decimal? @db.Decimal(5, 2)
+  /** % sobre o líquido total dos atendimentos da barbearia no período (contrato / gerência), independente do repasse por cadeira. */
+  tenantRevenueSharePercent Decimal? @db.Decimal(5, 2)
+  separateCashRegister Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("users")
+}
+
+/** Observações internas da equipe sobre o cliente (não expostas ao app do cliente). */
+model ClientTeamNote {
+  id           String   @id @default(cuid())
+  tenantId     String
+  clientUserId String
+  authorUserId String
+  body         String   @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, clientUserId])
+  @@map("client_team_notes")
+}
+
+model TenantAdminLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  action    String
+  oldValue  String?
+  newValue  String
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@map("tenant_admin_logs")
+}

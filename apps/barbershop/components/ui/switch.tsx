@@ -1,0 +1,48 @@
+"use client"
+
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+export type SwitchProps = Omit<
+  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  "onChange"
+> & {
+  checked?: boolean
+  onCheckedChange?: (checked: boolean) => void
+}
+
+export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
+  ({ className, checked = false, disabled, onCheckedChange, ...props }, ref) => {
+    return (
+      <button
+        ref={ref}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => {
+          if (disabled) return
+          onCheckedChange?.(!checked)
+        }}
+        className={cn(
+          "inline-flex h-5 w-9 items-center rounded-full border border-input transition-colors",
+          checked ? "bg-amber-500 border-amber-500/50" : "bg-zinc-800",
+          disabled && "opacity-50 cursor-not-allowed",
+          className
+        )}
+        {...props}
+      >
+        <span
+          className={cn(
+            "block h-4 w-4 rounded-full bg-white shadow transition-transform",
+            checked ? "translate-x-4" : "translate-x-0.5"
+          )}
+        />
+      </button>
+    )
+  }
+)
+
+Switch.displayName = "Switch"
+

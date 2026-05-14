@@ -1,0 +1,49 @@
+# Override para desenvolvimento local
+# Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  # Em dev, apenas infraestrutura roda em Docker
+  # Os apps rodam localmente com hot reload
+
+  backend:
+    build:
+      dockerfile: docker/backend.dev.Dockerfile
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run start:dev
+    environment:
+      NODE_ENV: development
+
+  backoffice:
+    build:
+      dockerfile: docker/backoffice.dev.Dockerfile
+    volumes:
+      - ./apps/backoffice:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+
+  barbershop:
+    build:
+      dockerfile: docker/barbershop.dev.Dockerfile
+    volumes:
+      - ./apps/barbershop:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+
+  client:
+    build:
+      dockerfile: docker/client.dev.Dockerfile
+    volumes:
+      - ./apps/client:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    environment:
+      NODE_ENV: development
