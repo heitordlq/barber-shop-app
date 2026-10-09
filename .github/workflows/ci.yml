@@ -23,7 +23,7 @@ jobs:
       - run: pnpm --filter backend exec prisma generate
       - run: pnpm --filter backend exec tsc --noEmit
       - run: pnpm --filter backend build
-      - run: pnpm --filter backend test -- --ci
+      - run: pnpm --filter backend test
 
   frontends:
     runs-on: ubuntu-latest
