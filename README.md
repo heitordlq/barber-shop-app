@@ -1,8 +1,25 @@
 # Barbearia SaaS
 
+[![CI](https://github.com/heitordlq/barber-shop-app/actions/workflows/ci.yml/badge.svg)](https://github.com/heitordlq/barber-shop-app/actions/workflows/ci.yml)
+![NestJS](https://img.shields.io/badge/NestJS-API-E0234E?logo=nestjs&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-3_apps-000000?logo=nextdotjs)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Prisma-336791?logo=postgresql&logoColor=white)
+
 Plataforma multi-tenant para barbearias: agendamento com barbeiros e horários próprios, fidelidade, pagamentos (Stripe Connect), painel do dono da barbearia, app público de reservas e backoffice do SaaS.
 
 ## Arquitetura
+
+```mermaid
+flowchart LR
+  BO[Backoffice<br/>Next.js] --> API
+  BD[Painel da barbearia<br/>Next.js] --> API
+  CL[Reservas públicas<br/>Next.js] --> API
+  API[API NestJS<br/>prefixo /api] --> PG[(PostgreSQL<br/>Prisma)]
+  API --> RD[(Redis<br/>filas)]
+  API --> MN[(MinIO<br/>arquivos)]
+  API <--> ST[Stripe<br/>checkout, webhooks, Connect]
+```
 
 Monorepo com **pnpm** workspaces e **Turborepo**:
 
@@ -84,7 +101,7 @@ Isso instala dependências de todos os pacotes e apps (workspace).
    cd ..
    ```
 
-3. **Criar o utilizador ADMIN por defeito** (apenas se ainda não existir `admin@barbearia.app`):
+3. **Criar o utilizador ADMIN** (apenas se ainda não existir `admin@barbearia.app`):
 
    ```bash
    pnpm --filter backend db:seed
@@ -92,12 +109,7 @@ Isso instala dependências de todos os pacotes e apps (workspace).
 
 ### Credenciais do backoffice (após o seed)
 
-| Campo | Valor |
-|--------|--------|
-| **E-mail** | `admin@barbearia.app` |
-| **Senha** | `Admin@barbearia123` |
-
-Para definir outra senha **na primeira criação** do admin, defina no `backend/.env` a variável `ADMIN_SEED_PASSWORD` antes de correr o seed. Se o utilizador já existir, o seed **não altera** a palavra-passe.
+O e-mail do admin é `admin@barbearia.app`. **Não existe senha padrão**: defina `ADMIN_SEED_PASSWORD` no `backend/.env` antes de correr o seed. Se não definir, o seed gera uma senha aleatória e mostra-a **uma única vez** no terminal. Se o utilizador já existir, o seed **não altera** a palavra-passe.
 
 > O login do backoffice exige role **ADMIN**. O registo público da API cria **OWNER** (dono de barbearia), não admin do SaaS.
 

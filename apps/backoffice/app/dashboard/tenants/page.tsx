@@ -163,7 +163,7 @@ function ActionModal({
           ) : (
             <div className="space-y-2">
               <Label>Plano</Label>
-              <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+              <Select value={selectedPlanId} onValueChange={(v) => setSelectedPlanId(v ?? "")}>
                 <SelectTrigger className="bg-zinc-800 border-zinc-700">
                   <span className="truncate text-sm text-left">
                     {selectedPlanId === "__none__"
@@ -603,7 +603,7 @@ export default function TenantsPage() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v ?? "all"); setPage(1); }}>
           <SelectTrigger className="w-44 bg-zinc-900 border-zinc-800 text-white">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
